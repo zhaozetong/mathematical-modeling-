@@ -6,7 +6,11 @@
 !*.cpp
 !*.h
 !*.hpp
+!*.c
+!*.py
 !Makefile
 !*.md
 !.gitignore
+!*.json
+tempCodeRunnerFile.*
 # 其他你想保留的文件类型...

@@ -3,14 +3,14 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import matplotlib
-matplotlib.rcParams['font.sans-serif'] = ['SimHei']  # 用黑体显示中文
-matplotlib.rcParams['axes.unicode_minus'] = False  # 正常显示负号
+matplotlib.rcParams['font.sans-serif'] = ['SimHei']  
+matplotlib.rcParams['axes.unicode_minus'] = False  
 
 def construct_image(U,S,V,rank=-1):
     if rank > len(S):
         rank = len(S)
     S[rank:] = 0
-    sigma = np.zeros((U.shape[0], V.shape[0]))
+    sigma = np.zeros((U.shape[0], V.shape[0]), dtype=np.float32)
     U[:, rank:] = 0
     V[rank:] = 0
     for i in range(rank):
@@ -25,9 +25,9 @@ def get_low_rank_components(U, S, V, rank):
     if rank > len(S):
         rank = len(S)
     
-    U_low = U[:, :rank].copy()
-    S_low = S[:rank].copy()
-    V_low = V[:rank, :].copy()
+    U_low = U[:, :rank].copy().astype(np.float32)
+    S_low = S[:rank].copy().astype(np.float32)
+    V_low = V[:rank, :].copy().astype(np.float32)
     
     return U_low, S_low, V_low
 
@@ -36,9 +36,9 @@ def process_image(image, rank):
     处理传入的直接的BGR图像，返回重构图像和low rank的分解结果
     """
     B, G, R = cv2.split(image)
-    ub, sb, vb = np.linalg.svd(B, full_matrices=False)
-    ug, sg, vg = np.linalg.svd(G, full_matrices=False)
-    ur, sr, vr = np.linalg.svd(R, full_matrices=False)
+    ub, sb, vb = np.linalg.svd(B.astype(np.float32), full_matrices=False)
+    ug, sg, vg = np.linalg.svd(G.astype(np.float32), full_matrices=False)
+    ur, sr, vr = np.linalg.svd(R.astype(np.float32), full_matrices=False)
     
     # 获取low rank分解结果
     ub_low, sb_low, vb_low = get_low_rank_components(ub, sb, vb, rank)
@@ -120,10 +120,6 @@ def calculate_metrics(original, reconstructed):
     else:
         psnr = 10 * np.log10((255.0 ** 2) / mse)
     
-    # 结构相似性指数 (SSIM)
-    # 注意：完整的SSIM需要更复杂的实现，这里使用OpenCV的实现
-    # ssim = cv2.quality.QualitySSIM_compute(original, reconstructed)[0]
-
     from skimage.metrics import structural_similarity as ssim
     # 转换为灰度图像计算SSIM
     original_gray = cv2.cvtColor(original, cv2.COLOR_BGR2GRAY)
@@ -156,29 +152,21 @@ def process_and_save_ranks(image, ranks, output_base_dir):
         # 保存SVD数据到SVD文件夹
         svd_filename = save_svd_data(decomposition_data, rank, svd_dir)
         
-        # 保存重构图像到image文件夹
-        img_filename = os.path.join(img_dir, f"reconstructed_rank_{rank}.jpg")
-        cv2.imwrite(img_filename, reconstructed)
-        
         # 从保存的SVD数据重建图像
         loaded_decomposition_data = load_svd_data(svd_filename)
         reconstructed_from_saved = reconstruct_from_low_rank_svd(loaded_decomposition_data)
         
         # 保存从SVD数据重建的图像
-        recon_img_filename = os.path.join(img_dir, f"from_saved_svd_rank_{rank}.jpg")
+        recon_img_filename = os.path.join(img_dir, f"from_saved_svd_rank_{rank}.png")
         cv2.imwrite(recon_img_filename, reconstructed_from_saved)
         
         # 计算和存储指标 (对比原图和重构图像)
-        metrics = calculate_metrics(image, reconstructed)
+        metrics = calculate_metrics(image, reconstructed_from_saved)
         metrics['rank'] = rank
         metrics_results.append(metrics)
         
-        # 计算保存的SVD数据重建图像与原图的对比指标
-        metrics_from_saved = calculate_metrics(image, reconstructed_from_saved)
-        
         print(f"处理完成 rank={rank}")
-        print(f"  直接重构: MSE={metrics['MSE']:.2f}, PSNR={metrics['PSNR']:.2f} dB, SSIM={metrics['SSIM']:.4f}")
-        print(f"  SVD重建: MSE={metrics_from_saved['MSE']:.2f}, PSNR={metrics_from_saved['PSNR']:.2f} dB, SSIM={metrics_from_saved['SSIM']:.4f}")
+        print(f"  SVD重建: MSE={metrics['MSE']:.2f}, PSNR={metrics['PSNR']:.2f} dB, SSIM={metrics['SSIM']:.4f}")
     
     # 生成比较图表并保存到image文件夹
     plot_metrics(metrics_results, img_dir)
@@ -228,7 +216,7 @@ def main():
     os.chdir(script_dir)  # 把当前工作目录改为脚本所在目录
     
     # 加载图像
-    image = cv2.imread("fruits.jpg")
+    image = cv2.imread("fruits.png")
     if image is None:
         print("无法加载图像文件")
         return
@@ -237,7 +225,7 @@ def main():
     output_dir = os.path.join(script_dir, 'results')
     
     # 处理不同的rank值
-    ranks = [1, 5, 10, 30, 100,300]
+    ranks = [1, 5, 10, 30, 100, 300]
     metrics_results = process_and_save_ranks(image, ranks, output_dir)
     
     # 打印比较结果
@@ -246,14 +234,12 @@ def main():
     for m in metrics_results:
         print(f"{m['rank']}\t{m['MSE']:.2f}\t\t{m['PSNR']:.2f} dB\t{m['SSIM']:.4f}")
     
-    # 展示原图和两个重构图像(直接重构和从保存的SVD重构)
+    # 展示原图和从保存的SVD重构的图像
     rank_to_show = 100
-    direct_reconstructed = cv2.imread(os.path.join(output_dir, 'image', f"reconstructed_rank_{rank_to_show}.jpg"))
-    svd_reconstructed = cv2.imread(os.path.join(output_dir, 'image', f"from_saved_svd_rank_{rank_to_show}.jpg"))
+    svd_reconstructed = cv2.imread(os.path.join(output_dir, 'image', f"from_saved_svd_rank_{rank_to_show}.png"))
     
     # 显示原图和重构图像
     cv2.imshow("Original", image)
-    cv2.imshow(f"Direct Reconstructed (Rank {rank_to_show})", direct_reconstructed)
     cv2.imshow(f"From Saved SVD (Rank {rank_to_show})", svd_reconstructed)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
